@@ -57,6 +57,10 @@ def verify_password(input_password: str, role: str) -> bool:
     return False
 
 
+def passwords_configured() -> bool:
+    return any([ADMIN_PASSWORD_HASH, GUEST_PASSWORD_HASH, ADMIN_PASSWORD, GUEST_PASSWORD])
+
+
 def create_token(role: str) -> str:
     payload = {
         "role": role,
@@ -145,12 +149,14 @@ def read_root():
 
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(payload: LoginRequest):
-    # Try admin match first, then guest
+    # Require a valid password; do not allow empty config bypass
     if verify_password(payload.password, "admin"):
         return LoginResponse(token=create_token("admin"), role="admin")
-    if verify_password(payload.password, "guest") or not (ADMIN_PASSWORD or ADMIN_PASSWORD_HASH or GUEST_PASSWORD or GUEST_PASSWORD_HASH):
-        # Allow guest if guest password matches OR if no passwords configured
+    if verify_password(payload.password, "guest"):
         return LoginResponse(token=create_token("guest"), role="guest")
+    # If no passwords configured at all, deny to enforce lock by default
+    if not passwords_configured():
+        raise HTTPException(status_code=403, detail="Password not configured. Please set ADMIN_PASSWORD or GUEST_PASSWORD.")
     raise HTTPException(status_code=401, detail="Invalid password")
 
 
